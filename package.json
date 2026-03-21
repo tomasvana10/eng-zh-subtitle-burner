@@ -1,0 +1,13 @@
+{
+	"name": "eng-zh-subtitle-burner",
+	"version": "1.0.0",
+	"type": "module",
+	"scripts": {
+		"build": "tsc",
+		"start": "node dist/translate.js"
+	},
+	"devDependencies": {
+		"typescript": "^5.7.0",
+		"@types/node": "^22.0.0"
+	}
+}

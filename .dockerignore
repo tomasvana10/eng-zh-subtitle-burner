@@ -1,0 +1,7 @@
+node_modules
+dist
+*.mp4
+*.mkv
+*.avi
+*.mov
+.git

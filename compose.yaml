@@ -1,0 +1,35 @@
+name: eng-zh-subtitle-burner
+
+services:
+  ollama:
+    image: ollama/ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+
+  worker:
+    build: .
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    depends_on:
+      - ollama
+    volumes:
+      - ${HOST_DIR:-.}:/data
+    profiles:
+      - run
+
+volumes:
+  ollama_data:
