@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { extname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 interface SrtEntry {
@@ -23,13 +23,14 @@ const { values, positionals } = parseArgs({
 
 const inputPath = positionals[0];
 if (!inputPath) {
-	console.error("Usage: node translate.js <input.mp4> -o <output.mp4>");
+	console.error("Usage: node translate.js <input video> [-o <output>]");
 	process.exit(1);
 }
 
 const input = resolve(inputPath);
+const inputExt = extname(input) || ".mp4";
 const output = resolve(
-	values.output ?? `${input.replace(/\.[^.]+$/, "")}_subtitled.mp4`,
+	values.output ?? `${input.replace(/\.[^.]+$/, "")}_subtitled${inputExt}`,
 );
 const ollamaUrl = values["ollama-url"];
 const model = values.model;
@@ -142,6 +143,19 @@ async function translateSrt(
 	writeFileSync(zhSrtPath, formatSrt(zhEntries), "utf-8");
 }
 
+function getCodecArgs(outputFile: string): string[] {
+	const ext = extname(outputFile).toLowerCase();
+	switch (ext) {
+		case ".webm":
+			return ["-c:v", "libvpx-vp9", "-crf", "30", "-b:v", "0", "-c:a", "libopus"];
+		case ".ogv":
+			return ["-c:v", "libtheora", "-q:v", "7", "-c:a", "libvorbis"];
+		default:
+			// mp4, mkv, mov, avi, ts, etc. — H.264 is widely supported
+			return ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "copy"];
+	}
+}
+
 function burnSubtitles(
 	inputFile: string,
 	enSrt: string,
@@ -167,14 +181,7 @@ function burnSubtitles(
 			inputFile,
 			"-vf",
 			filterComplex,
-			"-c:v",
-			"libx264",
-			"-preset",
-			"medium",
-			"-crf",
-			"18",
-			"-c:a",
-			"copy",
+			...getCodecArgs(outputFile),
 			"-y",
 			outputFile,
 		],
