@@ -1,13 +1,24 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { extname, join, resolve } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { consola } from "consola";
 
 interface SrtEntry {
 	index: number;
 	time: string;
 	text: string;
+}
+
+interface ProbeResult {
+	format: string;
+	duration: number;
+	fileSize: number;
+	videoCodec: string;
+	audioCodec: string;
+	resolution: string;
+	fps: number;
 }
 
 const TRANSLATION_BATCH_SIZE = 20;
@@ -23,7 +34,7 @@ const { values, positionals } = parseArgs({
 
 const inputPath = positionals[0];
 if (!inputPath) {
-	console.error("Usage: node translate.js <input video> [-o <output>]");
+	consola.error("Usage: node translate.js <input video> [-o <output>]");
 	process.exit(1);
 }
 
@@ -34,6 +45,55 @@ const output = resolve(
 );
 const ollamaUrl = values["ollama-url"];
 const model = values.model;
+
+function formatDuration(seconds: number): string {
+	const h = Math.floor(seconds / 3600);
+	const m = Math.floor((seconds % 3600) / 60);
+	const s = Math.floor(seconds % 60);
+	if (h > 0) return `${h}h${m}m${s}s`;
+	if (m > 0) return `${m}m${s}s`;
+	return `${s}s`;
+}
+
+function formatFileSize(bytes: number): string {
+	if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
+	if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
+	return `${(bytes / 1e3).toFixed(0)} KB`;
+}
+
+function probeInput(inputFile: string): ProbeResult {
+	const raw = execFileSync("ffprobe", [
+		"-v", "quiet",
+		"-print_format", "json",
+		"-show_format",
+		"-show_streams",
+		inputFile,
+	], { encoding: "utf-8" });
+
+	const info = JSON.parse(raw) as {
+		format: { format_name: string; duration: string; size: string };
+		streams: { codec_type: string; codec_name: string; width?: number; height?: number; r_frame_rate?: string }[];
+	};
+
+	const video = info.streams.find((s) => s.codec_type === "video");
+	const audio = info.streams.find((s) => s.codec_type === "audio");
+
+	let fps = 0;
+	if (video?.r_frame_rate) {
+		const [num, den] = video.r_frame_rate.split("/").map(Number);
+		if (den) fps = Math.round((num / den) * 100) / 100;
+	}
+
+	return {
+		format: info.format.format_name,
+		duration: parseFloat(info.format.duration),
+		fileSize: parseInt(info.format.size, 10),
+		videoCodec: video?.codec_name ?? "unknown",
+		audioCodec: audio?.codec_name ?? "none",
+		resolution: video ? `${video.width}x${video.height}` : "unknown",
+		fps,
+	};
+}
 
 function parseSrt(content: string) {
 	const entries: SrtEntry[] = [];
@@ -65,11 +125,14 @@ function formatSrt(entries: SrtEntry[]) {
 }
 
 function transcribe(inputFile: string, srtOut: string) {
-	console.log("transcribing with faster-whisper...");
+	consola.start("transcribing with faster-whisper...");
+	const t0 = Date.now();
 	const whisperScript = join(import.meta.dirname, "whisper.py");
 	execFileSync("python3", [whisperScript, inputFile, srtOut], {
 		stdio: "inherit",
 	});
+	const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+	consola.success(`transcription complete (${elapsed}s)`);
 }
 
 async function translateBatch(texts: string[]) {
@@ -121,14 +184,20 @@ async function translateSrt(
 	enSrtPath: string,
 	zhSrtPath: string,
 ): Promise<void> {
-	console.log("translating to chinese via ollama...");
 	const entries = parseSrt(readFileSync(enSrtPath, "utf-8"));
+	const totalBatches = Math.ceil(entries.length / TRANSLATION_BATCH_SIZE);
+	consola.start(`translating ${entries.length} entries to chinese via ollama (${model}, ${totalBatches} batches)`);
+	const t0 = Date.now();
 	const zhEntries: SrtEntry[] = [];
 
 	for (let i = 0; i < entries.length; i += TRANSLATION_BATCH_SIZE) {
+		const batchNum = Math.floor(i / TRANSLATION_BATCH_SIZE) + 1;
 		const batch = entries.slice(i, i + TRANSLATION_BATCH_SIZE);
 		const texts = batch.map((e) => e.text);
+		consola.info(`  batch ${batchNum}/${totalBatches} (${texts.length} lines)...`);
+		const batchT0 = Date.now();
 		const translated = await translateBatch(texts);
+		const batchElapsed = ((Date.now() - batchT0) / 1000).toFixed(1);
 		for (let j = 0; j < batch.length; j++) {
 			zhEntries.push({
 				index: batch[j].index,
@@ -137,9 +206,11 @@ async function translateSrt(
 			});
 		}
 		const done = Math.min(i + TRANSLATION_BATCH_SIZE, entries.length);
-		console.log(`  translated ${done}/${entries.length} entries`);
+		consola.success(`  batch ${batchNum} done: ${done}/${entries.length} entries (${batchElapsed}s)`);
 	}
 
+	const totalElapsed = ((Date.now() - t0) / 1000).toFixed(1);
+	consola.success(`translation complete (${totalElapsed}s)`);
 	writeFileSync(zhSrtPath, formatSrt(zhEntries), "utf-8");
 }
 
@@ -162,7 +233,9 @@ function burnSubtitles(
 	zhSrt: string,
 	outputFile: string,
 ): void {
-	console.log("burning subtitles with ffmpeg...");
+	const codecArgs = getCodecArgs(outputFile);
+	consola.start(`burning subtitles with ffmpeg (${codecArgs[1]})...`);
+	const t0 = Date.now();
 
 	// libass needs : \ ' [ ] escaped in file paths
 	const escPath = (p: string) =>
@@ -181,32 +254,71 @@ function burnSubtitles(
 			inputFile,
 			"-vf",
 			filterComplex,
-			...getCodecArgs(outputFile),
+			...codecArgs,
 			"-y",
 			outputFile,
 		],
 		{ stdio: "inherit" },
 	);
+
+	const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+	const outSize = formatFileSize(statSync(outputFile).size);
+	consola.success(`encoding complete (${elapsed}s, ${outSize})`);
+}
+
+async function checkOllamaGpu() {
+	try {
+		const res = await fetch(`${ollamaUrl}/api/ps`);
+		if (res.ok) {
+			const data = (await res.json()) as {
+				models?: { name: string; size: number; details?: { family: string } }[];
+			};
+			consola.info(`ollama server reachable at ${ollamaUrl}`);
+			if (data.models?.length) {
+				for (const m of data.models) {
+					consola.info(`loaded model: ${m.name} (${(m.size / 1e9).toFixed(1)} GB)`);
+				}
+			} else {
+				consola.info(`no models loaded yet (first request will load ${model})`);
+			}
+		}
+	} catch (err) {
+		consola.warn(`cannot reach ollama at ${ollamaUrl}: ${err}`);
+	}
 }
 
 async function main() {
+	const pipelineT0 = Date.now();
+
+	consola.box(`eng-zh-subtitle-burner`);
+
+	// probe input file
+	const probe = probeInput(input);
+	consola.info(`input: ${basename(input)}`);
+	consola.info(`  format: ${probe.format} | ${probe.resolution} | ${probe.fps}fps`);
+	consola.info(`  codecs: video=${probe.videoCodec} audio=${probe.audioCodec}`);
+	consola.info(`  duration: ${formatDuration(probe.duration)} | size: ${formatFileSize(probe.fileSize)}`);
+	consola.info(`output: ${basename(output)} (${extname(output)})`);
+
 	const tmp = mkdtempSync(join(tmpdir(), "subpipe-"));
 
 	try {
 		const enSrt = join(tmp, "en.srt");
 		const zhSrt = join(tmp, "zh.srt");
 
+		await checkOllamaGpu();
 		transcribe(input, enSrt);
 		await translateSrt(enSrt, zhSrt);
 		burnSubtitles(input, enSrt, zhSrt, output);
 
-		console.log(`\nDone! Output: ${output}`);
+		const totalElapsed = ((Date.now() - pipelineT0) / 1000).toFixed(1);
+		consola.success(`done in ${totalElapsed}s! output: ${output}`);
 	} finally {
 		rmSync(tmp, { recursive: true, force: true });
 	}
 }
 
 main().catch((err) => {
-	console.error(err);
+	consola.error(err);
 	process.exit(1);
 });
