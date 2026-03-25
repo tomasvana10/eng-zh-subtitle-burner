@@ -30,21 +30,26 @@ def transcribe(input_path: str, output_path: str) -> None:
     else:
         log.warning("CUDA not available — falling back to CPU (this will be slow)")
 
-    # also check ctranslate2 backend
     try:
         import ctranslate2
         log.info(f"ctranslate2 {ctranslate2.__version__}, CUDA supported: {ctranslate2.get_cuda_device_count() > 0}")
     except Exception as e:
         log.warning(f"cannot check ctranslate2: {e}")
 
-    log.info(f"loading whisper model (large-v3) on {device} ({compute_type})...")
+    model_name = "deepdml/faster-whisper-large-v3-turbo-ct2"
+    log.info(f"loading whisper model ({model_name}) on {device} ({compute_type})...")
     t0 = time.time()
-    model = WhisperModel("large-v3", device=device, compute_type=compute_type)
+    model = WhisperModel(model_name, device=device, compute_type=compute_type)
     log.info(f"model loaded in {time.time() - t0:.1f}s")
 
     log.info(f"transcribing: {input_path}")
     t0 = time.time()
-    segments, info = model.transcribe(input_path, language="en", vad_filter=True)
+    segments, info = model.transcribe(
+        input_path,
+        language="en",
+        vad_filter=True,
+        batch_size=16,
+    )
 
     with open(output_path, "w", encoding="utf-8") as f:
         idx = 0

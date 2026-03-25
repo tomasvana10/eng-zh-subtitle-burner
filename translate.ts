@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, extname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -62,17 +68,29 @@ function formatFileSize(bytes: number): string {
 }
 
 function probeInput(inputFile: string): ProbeResult {
-	const raw = execFileSync("ffprobe", [
-		"-v", "quiet",
-		"-print_format", "json",
-		"-show_format",
-		"-show_streams",
-		inputFile,
-	], { encoding: "utf-8" });
+	const raw = execFileSync(
+		"ffprobe",
+		[
+			"-v",
+			"quiet",
+			"-print_format",
+			"json",
+			"-show_format",
+			"-show_streams",
+			inputFile,
+		],
+		{ encoding: "utf-8" },
+	);
 
 	const info = JSON.parse(raw) as {
 		format: { format_name: string; duration: string; size: string };
-		streams: { codec_type: string; codec_name: string; width?: number; height?: number; r_frame_rate?: string }[];
+		streams: {
+			codec_type: string;
+			codec_name: string;
+			width?: number;
+			height?: number;
+			r_frame_rate?: string;
+		}[];
 	};
 
 	const video = info.streams.find((s) => s.codec_type === "video");
@@ -93,6 +111,18 @@ function probeInput(inputFile: string): ProbeResult {
 		resolution: video ? `${video.width}x${video.height}` : "unknown",
 		fps,
 	};
+}
+
+function checkNvenc(): boolean {
+	try {
+		const result = execFileSync("ffmpeg", ["-hide_banner", "-encoders"], {
+			encoding: "utf-8",
+			stdio: ["pipe", "pipe", "pipe"],
+		});
+		return result.includes("h264_nvenc");
+	} catch {
+		return false;
+	}
 }
 
 function parseSrt(content: string) {
@@ -186,7 +216,9 @@ async function translateSrt(
 ): Promise<void> {
 	const entries = parseSrt(readFileSync(enSrtPath, "utf-8"));
 	const totalBatches = Math.ceil(entries.length / TRANSLATION_BATCH_SIZE);
-	consola.start(`translating ${entries.length} entries to chinese via ollama (${model}, ${totalBatches} batches)`);
+	consola.start(
+		`translating ${entries.length} entries to chinese via ollama (${model}, ${totalBatches} batches)`,
+	);
 	const t0 = Date.now();
 	const zhEntries: SrtEntry[] = [];
 
@@ -194,7 +226,9 @@ async function translateSrt(
 		const batchNum = Math.floor(i / TRANSLATION_BATCH_SIZE) + 1;
 		const batch = entries.slice(i, i + TRANSLATION_BATCH_SIZE);
 		const texts = batch.map((e) => e.text);
-		consola.info(`  batch ${batchNum}/${totalBatches} (${texts.length} lines)...`);
+		consola.info(
+			`  batch ${batchNum}/${totalBatches} (${texts.length} lines)...`,
+		);
 		const batchT0 = Date.now();
 		const translated = await translateBatch(texts);
 		const batchElapsed = ((Date.now() - batchT0) / 1000).toFixed(1);
@@ -206,7 +240,9 @@ async function translateSrt(
 			});
 		}
 		const done = Math.min(i + TRANSLATION_BATCH_SIZE, entries.length);
-		consola.success(`  batch ${batchNum} done: ${done}/${entries.length} entries (${batchElapsed}s)`);
+		consola.success(
+			`  batch ${batchNum} done: ${done}/${entries.length} entries (${batchElapsed}s)`,
+		);
 	}
 
 	const totalElapsed = ((Date.now() - t0) / 1000).toFixed(1);
@@ -214,16 +250,47 @@ async function translateSrt(
 	writeFileSync(zhSrtPath, formatSrt(zhEntries), "utf-8");
 }
 
-function getCodecArgs(outputFile: string): string[] {
+function getCodecArgs(outputFile: string, useNvenc: boolean): string[] {
 	const ext = extname(outputFile).toLowerCase();
 	switch (ext) {
 		case ".webm":
-			return ["-c:v", "libvpx-vp9", "-crf", "30", "-b:v", "0", "-c:a", "libopus"];
+			return [
+				"-c:v",
+				"libvpx-vp9",
+				"-crf",
+				"30",
+				"-b:v",
+				"0",
+				"-c:a",
+				"libopus",
+			];
 		case ".ogv":
 			return ["-c:v", "libtheora", "-q:v", "7", "-c:a", "libvorbis"];
 		default:
-			// mp4, mkv, mov, avi, ts, etc. — H.264 is widely supported
-			return ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "copy"];
+			if (useNvenc) {
+				return [
+					"-c:v",
+					"h264_nvenc",
+					"-preset",
+					"p4",
+					"-cq",
+					"20",
+					"-b:v",
+					"0",
+					"-c:a",
+					"copy",
+				];
+			}
+			return [
+				"-c:v",
+				"libx264",
+				"-preset",
+				"medium",
+				"-crf",
+				"18",
+				"-c:a",
+				"copy",
+			];
 	}
 }
 
@@ -232,9 +299,11 @@ function burnSubtitles(
 	enSrt: string,
 	zhSrt: string,
 	outputFile: string,
+	useNvenc: boolean,
 ): void {
-	const codecArgs = getCodecArgs(outputFile);
-	consola.start(`burning subtitles with ffmpeg (${codecArgs[1]})...`);
+	const codecArgs = getCodecArgs(outputFile, useNvenc);
+	const encoder = codecArgs[1];
+	consola.start(`burning subtitles with ffmpeg (${encoder})...`);
 	const t0 = Date.now();
 
 	// libass needs : \ ' [ ] escaped in file paths
@@ -247,19 +316,19 @@ function burnSubtitles(
 		`subtitles='${escPath(zhSrt)}':force_style='FontSize=20,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,Outline=2,Alignment=2,MarginV=60'`,
 	].join(",");
 
-	execFileSync(
-		"ffmpeg",
-		[
-			"-i",
-			inputFile,
-			"-vf",
-			filterComplex,
-			...codecArgs,
-			"-y",
-			outputFile,
-		],
-		{ stdio: "inherit" },
-	);
+	const args = [
+		"-hwaccel",
+		"auto",
+		"-i",
+		inputFile,
+		"-vf",
+		filterComplex,
+		...codecArgs,
+		"-y",
+		outputFile,
+	];
+
+	execFileSync("ffmpeg", args, { stdio: "inherit" });
 
 	const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 	const outSize = formatFileSize(statSync(outputFile).size);
@@ -271,15 +340,23 @@ async function checkOllamaGpu() {
 		const res = await fetch(`${ollamaUrl}/api/ps`);
 		if (res.ok) {
 			const data = (await res.json()) as {
-				models?: { name: string; size: number; details?: { family: string } }[];
+				models?: {
+					name: string;
+					size: number;
+					details?: { family: string };
+				}[];
 			};
 			consola.info(`ollama server reachable at ${ollamaUrl}`);
 			if (data.models?.length) {
 				for (const m of data.models) {
-					consola.info(`loaded model: ${m.name} (${(m.size / 1e9).toFixed(1)} GB)`);
+					consola.info(
+						`loaded model: ${m.name} (${(m.size / 1e9).toFixed(1)} GB)`,
+					);
 				}
 			} else {
-				consola.info(`no models loaded yet (first request will load ${model})`);
+				consola.info(
+					`no models loaded yet (first request will load ${model})`,
+				);
 			}
 		}
 	} catch (err) {
@@ -295,10 +372,24 @@ async function main() {
 	// probe input file
 	const probe = probeInput(input);
 	consola.info(`input: ${basename(input)}`);
-	consola.info(`  format: ${probe.format} | ${probe.resolution} | ${probe.fps}fps`);
-	consola.info(`  codecs: video=${probe.videoCodec} audio=${probe.audioCodec}`);
-	consola.info(`  duration: ${formatDuration(probe.duration)} | size: ${formatFileSize(probe.fileSize)}`);
+	consola.info(
+		`  format: ${probe.format} | ${probe.resolution} | ${probe.fps}fps`,
+	);
+	consola.info(
+		`  codecs: video=${probe.videoCodec} audio=${probe.audioCodec}`,
+	);
+	consola.info(
+		`  duration: ${formatDuration(probe.duration)} | size: ${formatFileSize(probe.fileSize)}`,
+	);
 	consola.info(`output: ${basename(output)} (${extname(output)})`);
+
+	// check GPU encoding support
+	const useNvenc = checkNvenc();
+	if (useNvenc) {
+		consola.success("nvenc available — using GPU encoding");
+	} else {
+		consola.warn("nvenc not available — falling back to CPU encoding");
+	}
 
 	const tmp = mkdtempSync(join(tmpdir(), "subpipe-"));
 
@@ -309,7 +400,7 @@ async function main() {
 		await checkOllamaGpu();
 		transcribe(input, enSrt);
 		await translateSrt(enSrt, zhSrt);
-		burnSubtitles(input, enSrt, zhSrt, output);
+		burnSubtitles(input, enSrt, zhSrt, output, useNvenc);
 
 		const totalElapsed = ((Date.now() - pipelineT0) / 1000).toFixed(1);
 		consola.success(`done in ${totalElapsed}s! output: ${output}`);

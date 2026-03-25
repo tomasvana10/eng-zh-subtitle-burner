@@ -28,8 +28,10 @@ services:
       - ollama
     volumes:
       - ${HOST_DIR:-.}:/data
+      - hf_cache:/root/.cache/huggingface
     profiles:
       - run
 
 volumes:
   ollama_data:
+  hf_cache:
