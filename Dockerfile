@@ -8,7 +8,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir faster-whisper
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+RUN pip3 install --no-cache-dir faster-whisper torch --extra-index-url https://download.pytorch.org/whl/cu124
 
 WORKDIR /app
 

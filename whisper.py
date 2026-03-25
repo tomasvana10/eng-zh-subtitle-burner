@@ -17,20 +17,29 @@ def seconds_to_srt_time(s: float) -> str:
 
 
 def transcribe(input_path: str, output_path: str) -> None:
-    try:
-        import torch
-        if torch.cuda.is_available():
-            gpu_name = torch.cuda.get_device_name(0)
-            gpu_mem = torch.cuda.get_device_properties(0).total_mem / 1024**3
-            log.info(f"CUDA available: {gpu_name} ({gpu_mem:.1f} GB)")
-        else:
-            log.warning("CUDA not available, whisper will run on CPU (slow)")
-    except ImportError:
-        log.warning("torch not installed, cannot verify GPU availability")
+    import torch
 
-    log.info("loading whisper model (large-v3)...")
+    device = "cpu"
+    compute_type = "int8"
+    if torch.cuda.is_available():
+        gpu_name = torch.cuda.get_device_name(0)
+        gpu_mem = torch.cuda.get_device_properties(0).total_mem / 1024**3
+        log.info(f"CUDA available: {gpu_name} ({gpu_mem:.1f} GB)")
+        device = "cuda"
+        compute_type = "float16"
+    else:
+        log.warning("CUDA not available — falling back to CPU (this will be slow)")
+
+    # also check ctranslate2 backend
+    try:
+        import ctranslate2
+        log.info(f"ctranslate2 {ctranslate2.__version__}, CUDA supported: {ctranslate2.get_cuda_device_count() > 0}")
+    except Exception as e:
+        log.warning(f"cannot check ctranslate2: {e}")
+
+    log.info(f"loading whisper model (large-v3) on {device} ({compute_type})...")
     t0 = time.time()
-    model = WhisperModel("large-v3", device="cuda", compute_type="float16")
+    model = WhisperModel("large-v3", device=device, compute_type=compute_type)
     log.info(f"model loaded in {time.time() - t0:.1f}s")
 
     log.info(f"transcribing: {input_path}")
