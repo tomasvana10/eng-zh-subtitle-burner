@@ -23,7 +23,7 @@ def transcribe(input_path: str, output_path: str) -> None:
     compute_type = "int8"
     if torch.cuda.is_available():
         gpu_name = torch.cuda.get_device_name(0)
-        gpu_mem = torch.cuda.get_device_properties(0).total_mem / 1024**3
+        gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1024**3
         log.info(f"CUDA available: {gpu_name} ({gpu_mem:.1f} GB)")
         device = "cuda"
         compute_type = "float16"
