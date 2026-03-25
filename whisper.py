@@ -2,7 +2,7 @@ import logging
 import sys
 import time
 
-from faster_whisper import WhisperModel
+from faster_whisper import BatchedInferencePipeline, WhisperModel
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("whisper")
@@ -42,12 +42,13 @@ def transcribe(input_path: str, output_path: str) -> None:
     model = WhisperModel(model_name, device=device, compute_type=compute_type)
     log.info(f"model loaded in {time.time() - t0:.1f}s")
 
+    batched = BatchedInferencePipeline(model=model)
+
     log.info(f"transcribing: {input_path}")
     t0 = time.time()
-    segments, info = model.transcribe(
+    segments, info = batched.transcribe(
         input_path,
         language="en",
-        vad_filter=True,
         batch_size=16,
     )
 
