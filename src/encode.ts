@@ -89,6 +89,8 @@ export function burnSubtitles(
 			"-vf",
 			`ass='${escPath(assFile)}'`,
 			...codecArgs,
+			"-threads",
+			"0",
 			"-y",
 			outputFile,
 		],

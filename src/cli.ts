@@ -7,7 +7,7 @@ import { consola } from "consola";
 import { generateAss } from "./ass.js";
 import { burnSubtitles, muxSubtitles } from "./encode.js";
 import { checkNvenc, probeInput } from "./probe.js";
-import { fixOverlaps, parseSrt } from "./srt.js";
+import { fixOverlaps, parseSrt, splitLongEntries } from "./srt.js";
 import { transcribe } from "./transcribe.js";
 import {
 	type ApiProvider,
@@ -225,14 +225,19 @@ const main = defineCommand({
 			transcribe(input, enSrt, whisperModel);
 			await translateSrt(enSrt, zhSrt, translateCfg);
 
-			const enEntries = fixOverlaps(
+			const enRaw = fixOverlaps(
 				parseSrt(readFileSync(enSrt, "utf-8")),
 			);
-			const zhEntries = fixOverlaps(
+			const zhRaw = fixOverlaps(
 				parseSrt(readFileSync(zhSrt, "utf-8")),
 			);
+			const { en: enEntries, zh: zhEntries } = splitLongEntries(
+				enRaw,
+				zhRaw,
+				10,
+			);
 			consola.info(
-				`subtitle entries: ${enEntries.length} EN, ${zhEntries.length} ZH`,
+				`subtitle entries: ${enEntries.length} EN, ${zhEntries.length} ZH (split from ${enRaw.length} segments)`,
 			);
 
 			writeFileSync(

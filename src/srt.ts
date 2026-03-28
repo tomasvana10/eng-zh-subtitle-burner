@@ -72,6 +72,96 @@ export function sanitizeSrtText(text: string): string {
 		.trim();
 }
 
+/**
+ * Split a paired EN/ZH entry into chunks of at most `maxWords` English words.
+ * The Chinese text is split proportionally by character count.
+ * Time is distributed proportionally by English word count per chunk.
+ */
+export function splitEntryPair(
+	en: SrtEntry,
+	zh: SrtEntry,
+	maxWords: number,
+): { en: SrtEntry[]; zh: SrtEntry[] } {
+	const [startStr, endStr] = en.time.split(" --> ");
+	const start = srtTimeToSeconds(startStr.trim());
+	const end = srtTimeToSeconds(endStr.trim());
+	const duration = end - start;
+
+	const enWords = en.text.split(/\s+/).filter(Boolean);
+	if (enWords.length <= maxWords) {
+		return { en: [en], zh: [zh] };
+	}
+
+	const zhChars = [...zh.text.replace(/\s+/g, "")];
+	const totalEnWords = enWords.length;
+	const totalZhChars = zhChars.length;
+
+	const enOut: SrtEntry[] = [];
+	const zhOut: SrtEntry[] = [];
+	let enIdx = 0;
+	let zhIdx = 0;
+	let seq = 0;
+
+	while (enIdx < totalEnWords) {
+		const chunkWords = enWords.slice(enIdx, enIdx + maxWords);
+		const chunkStart = start + (enIdx / totalEnWords) * duration;
+		const chunkEndWord = Math.min(enIdx + maxWords, totalEnWords);
+		const chunkEnd = start + (chunkEndWord / totalEnWords) * duration;
+		const time = `${secondsToSrtTime(chunkStart)} --> ${secondsToSrtTime(chunkEnd)}`;
+
+		seq++;
+		enOut.push({ index: seq, time, text: chunkWords.join(" ") });
+
+		// Split Chinese proportionally
+		const zhChunkLen = Math.round(
+			(chunkWords.length / totalEnWords) * totalZhChars,
+		);
+		const zhChunk = zhChars.slice(zhIdx, zhIdx + zhChunkLen).join("");
+		zhOut.push({ index: seq, time, text: zhChunk || zh.text });
+		zhIdx += zhChunkLen;
+
+		enIdx += maxWords;
+	}
+
+	// Assign any remaining Chinese characters to the last chunk
+	if (zhIdx < totalZhChars && zhOut.length > 0) {
+		zhOut[zhOut.length - 1].text += zhChars.slice(zhIdx).join("");
+	}
+
+	return { en: enOut, zh: zhOut };
+}
+
+/**
+ * Split all paired EN/ZH entries so no subtitle exceeds maxWords.
+ * Entries must be aligned 1:1 (same length arrays).
+ */
+export function splitLongEntries(
+	enEntries: SrtEntry[],
+	zhEntries: SrtEntry[],
+	maxWords: number,
+): { en: SrtEntry[]; zh: SrtEntry[] } {
+	const enOut: SrtEntry[] = [];
+	const zhOut: SrtEntry[] = [];
+
+	for (let i = 0; i < enEntries.length; i++) {
+		const { en, zh } = splitEntryPair(
+			enEntries[i],
+			zhEntries[i],
+			maxWords,
+		);
+		enOut.push(...en);
+		zhOut.push(...zh);
+	}
+
+	// Re-index
+	for (let i = 0; i < enOut.length; i++) {
+		enOut[i].index = i + 1;
+		zhOut[i].index = i + 1;
+	}
+
+	return { en: enOut, zh: zhOut };
+}
+
 export function formatSrt(entries: SrtEntry[]): string {
 	return entries
 		.map((e) => `${e.index}\n${e.time}\n${sanitizeSrtText(e.text)}\n`)
