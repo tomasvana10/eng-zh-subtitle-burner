@@ -1,36 +1,123 @@
 # eng-zh-subtitle-burner
 
-A utility that transcribes a video’s audio into English, translates it into Chinese, and embeds both languages as subtitles directly into the video.
+Transcribe English audio, translate to Chinese, and burn or mux EN/ZH subtitles into video. Supports local translation via Ollama or cloud APIs (Claude, ChatGPT, Gemini).
 
 ## Prerequisites
 
-- NVIDIA GPU with CUDA
-- 15 GB disk space
+- NVIDIA GPU with CUDA (for transcription and optional GPU encoding)
+- Docker + Docker Compose
+- ~15 GB disk space (CUDA image + whisper model + translation model)
 
-## Setup for Windows and WSL2
+## Setup (Docker — recommended)
 
-1. Install/update Windows NVIDIA drivers
-
-2. On Windows, set up Docker Desktop
-    1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-    2. During setup, ensure **"Use WSL 2 based engine"** is checked
-    3. Navigate to Docker Desktop > Settings > Resources > WSL Integration
-    4. Enable your WSL distro, e.g. Ubuntu
-
-3. Ensure Docker has access to your GPU. If this fails, ensure your NVIDIA drivers are up to date.
+### 1. Ensure GPU access
 
 ```sh
 docker run --rm --gpus all nvidia/cuda:12.4.1-runtime-ubuntu22.04 nvidia-smi
 ```
 
-4. Clone and change directory into the repo:
-    1. `git clone https://github.com/tomasvana10/eng-zh-subtitle-burner`
-    2. `cd eng-zh-subtitle-burner`
+If this fails, update your NVIDIA drivers. On WSL2, also enable Docker Desktop's WSL integration.
 
-5. Run the utility. This will take several minutes on the first run.
+### 2. Clone the repo
+
+```sh
+git clone https://github.com/tomasvana10/eng-zh-subtitle-burner
+cd eng-zh-subtitle-burner
+```
+
+### 3. Run
 
 ```sh
 chmod +x run.sh
 ./run.sh ./input.mp4
 ```
 
+First run takes several minutes (builds container, downloads models).
+
+## Setup (local, no Docker)
+
+Requires: Python 3.10+, Node.js 22+, pnpm, ffmpeg (with libass), CUDA toolkit.
+
+```sh
+pip install faster-whisper torch
+pnpm install
+pnpm build
+```
+
+Start an Ollama server separately, then:
+
+```sh
+node dist/src/cli.js ./input.mp4 --ollama-url http://localhost:11434
+```
+
+Or use a cloud API instead of Ollama:
+
+```sh
+node dist/src/cli.js ./input.mp4 --translate-via claude --api-key sk-ant-...
+```
+
+## Usage
+
+```
+subtitle-burner <input> [options]
+```
+
+### Output options
+
+| Flag | Description |
+|---|---|
+| `-o, --output <path>` | Output file path (default: `<input>_subtitled.<ext>`) |
+| `--soft` | Mux as soft subtitles (no re-encode, MKV output) |
+| `--no-english` | Only show Chinese subtitles |
+| `--crf <n>` | CRF quality for burn mode (default: 23, lower = better) |
+| `--preset <name>` | Encoder preset (default: medium) |
+
+### Translation options
+
+| Flag | Description |
+|---|---|
+| `--translate-via <mode>` | `local` (default), `chatgpt`, `gemini`, or `claude` |
+| `--api-key <key>` | API key (required for chatgpt/gemini/claude) |
+| `--model <name>` | Model name — local ollama model or API model override (default: `qwen3:14b`) |
+| `--ollama-url <url>` | Ollama server URL (default: `http://ollama:11434`) |
+| `--batch-size <n>` | Translation batch size (default: 20) |
+
+### Transcription options
+
+| Flag | Description |
+|---|---|
+| `--whisper-model <name>` | Whisper model (default: `deepdml/faster-whisper-large-v3-turbo-ct2`) |
+
+### Subtitle styling
+
+| Flag | Description |
+|---|---|
+| `--en-font-size <n>` | English font size (default: 16) |
+| `--zh-font-size <n>` | Chinese font size (default: 18) |
+| `--margin-v-en <n>` | English bottom margin (default: 12) |
+| `--margin-v-zh <n>` | Chinese bottom margin (default: 38) |
+
+## Examples
+
+```sh
+# Basic usage with local Ollama
+./run.sh ./lecture.mp4
+
+# Chinese-only subtitles, higher quality
+./run.sh ./lecture.mp4 --no-english --crf 18
+
+# Soft subtitles (no re-encode, fast)
+./run.sh ./lecture.mp4 --soft
+
+# Use Claude API for translation
+./run.sh ./lecture.mp4 --translate-via claude --api-key sk-ant-...
+
+# Use ChatGPT API
+./run.sh ./lecture.mp4 --translate-via chatgpt --api-key sk-...
+
+# Use Gemini API
+./run.sh ./lecture.mp4 --translate-via gemini --api-key AIza...
+
+# Custom output path and model
+./run.sh ./lecture.mp4 -o ./output.mkv --model qwen3:8b
+```

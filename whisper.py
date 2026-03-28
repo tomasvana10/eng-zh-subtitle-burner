@@ -1,3 +1,4 @@
+import argparse
 import logging
 import sys
 import time
@@ -16,7 +17,7 @@ def seconds_to_srt_time(s: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 
-def transcribe(input_path: str, output_path: str) -> None:
+def transcribe(input_path: str, output_path: str, model_name: str) -> None:
     import torch
 
     device = "cpu"
@@ -36,7 +37,6 @@ def transcribe(input_path: str, output_path: str) -> None:
     except Exception as e:
         log.warning(f"cannot check ctranslate2: {e}")
 
-    model_name = "deepdml/faster-whisper-large-v3-turbo-ct2"
     log.info(f"loading whisper model ({model_name}) on {device} ({compute_type})...")
     t0 = time.time()
     model = WhisperModel(model_name, device=device, compute_type=compute_type)
@@ -58,10 +58,8 @@ def transcribe(input_path: str, output_path: str) -> None:
             text = seg.text.strip()
             if not text:
                 continue
-            # skip zero/negative duration segments
             if seg.end <= seg.start:
                 continue
-            # collapse internal newlines and strip SRT-breaking chars
             text = " ".join(text.split())
             text = text.replace("-->", "- >")
             idx += 1
@@ -75,7 +73,9 @@ def transcribe(input_path: str, output_path: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <input> <output.srt>")
-        sys.exit(1)
-    transcribe(sys.argv[1], sys.argv[2])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input", help="Input audio/video file")
+    parser.add_argument("output", help="Output SRT file")
+    parser.add_argument("--model", default="deepdml/faster-whisper-large-v3-turbo-ct2", help="Whisper model name")
+    args = parser.parse_args()
+    transcribe(args.input, args.output, args.model)

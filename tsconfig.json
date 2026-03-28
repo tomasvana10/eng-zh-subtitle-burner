@@ -12,6 +12,6 @@
     "declaration": false,
     "sourceMap": false
   },
-  "include": ["translate.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

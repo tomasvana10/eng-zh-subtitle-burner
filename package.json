@@ -1,16 +1,23 @@
 {
 	"name": "eng-zh-subtitle-burner",
-	"version": "1.0.0",
+	"version": "2.0.0",
 	"type": "module",
+	"bin": {
+		"subtitle-burner": "dist/src/cli.js"
+	},
 	"scripts": {
 		"build": "tsc",
-		"start": "node dist/translate.js"
+		"start": "node dist/src/cli.js"
 	},
 	"devDependencies": {
 		"@types/node": "^22.0.0",
 		"typescript": "^5.7.0"
 	},
 	"dependencies": {
-		"consola": "^3.4.2"
+		"@anthropic-ai/sdk": "^0.39.0",
+		"@google/generative-ai": "^0.24.0",
+		"citty": "^0.2.1",
+		"consola": "^3.4.2",
+		"openai": "^4.82.0"
 	}
 }

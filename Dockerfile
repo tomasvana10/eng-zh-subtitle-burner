@@ -22,13 +22,13 @@ RUN pip3 install --no-cache-dir faster-whisper torch --extra-index-url https://d
 
 WORKDIR /app
 
-COPY package.json tsconfig.json ./
-RUN npm install
+COPY package.json pnpm-lock.yaml tsconfig.json ./
+RUN corepack enable && corepack prepare pnpm@latest --activate && pnpm install --frozen-lockfile
 
-COPY translate.ts whisper.py ./
-RUN npx tsc
-RUN cp whisper.py dist/
+COPY src/ src/
+COPY whisper.py ./
+RUN pnpm build
 
 WORKDIR /data
 
-ENTRYPOINT ["node", "/app/dist/translate.js"]
+ENTRYPOINT ["node", "/app/dist/src/cli.js"]
