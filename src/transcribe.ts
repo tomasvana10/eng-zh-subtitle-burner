@@ -9,7 +9,7 @@ export function transcribe(
 ): void {
 	consola.start("transcribing with faster-whisper...");
 	const t0 = Date.now();
-	const whisperScript = join(import.meta.dirname, "..", "whisper.py");
+	const whisperScript = join(import.meta.dirname, "..", "..", "whisper.py");
 	execFileSync(
 		"python3",
 		[whisperScript, inputFile, srtOut, "--model", whisperModel],
