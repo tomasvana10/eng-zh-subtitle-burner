@@ -6,6 +6,20 @@ export function buildTranslatePrompt(texts: string[]): string {
 	return `Translate each numbered line from English to Simplified Chinese. Keep the [number] prefix. Output ONLY the translated lines, nothing else.\n\n${numbered}`;
 }
 
+export function buildFixSystem(context?: string): string {
+	let system =
+		"You are a transcription proofreader. Fix words that were likely misheard by automatic speech recognition. Output only the corrected lines with their [number] prefixes, no explanations. If a line is already correct, output it unchanged.";
+	if (context) {
+		system += `\n\nContext about this video: ${context}`;
+	}
+	return system;
+}
+
+export function buildFixPrompt(texts: string[]): string {
+	const numbered = texts.map((t, i) => `[${i}] ${t}`).join("\n");
+	return `Review and fix any speech recognition errors in these subtitle lines. Keep the [number] prefix. Output ALL lines, corrected or unchanged.\n\n${numbered}`;
+}
+
 export function parseTranslateResponse(
 	content: string,
 	count: number,

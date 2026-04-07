@@ -50,22 +50,43 @@ def transcribe(input_path: str, output_path: str, model_name: str) -> None:
         input_path,
         language="en",
         batch_size=16,
+        word_timestamps=True,
     )
+
+    max_words = 12
+    min_words = 4
 
     with open(output_path, "w", encoding="utf-8") as f:
         idx = 0
         for seg in segments:
-            text = seg.text.strip()
-            if not text:
+            words = [w for w in (seg.words or []) if w.word.strip()]
+            if not words:
                 continue
-            if seg.end <= seg.start:
-                continue
-            text = " ".join(text.split())
-            text = text.replace("-->", "- >")
-            idx += 1
-            start = seconds_to_srt_time(seg.start)
-            end = seconds_to_srt_time(seg.end)
-            f.write(f"{idx}\n{start} --> {end}\n{text}\n\n")
+
+            # Group words into subtitle-sized chunks using actual timestamps
+            chunks: list[list] = []
+            chunk: list = []
+            for w in words:
+                chunk.append(w)
+                tok = w.word.rstrip()
+                is_sentence_end = tok.endswith((".", "!", "?"))
+                if len(chunk) >= max_words or (is_sentence_end and len(chunk) >= min_words):
+                    chunks.append(chunk)
+                    chunk = []
+            if chunk:
+                if len(chunk) <= 2 and chunks:
+                    chunks[-1].extend(chunk)
+                else:
+                    chunks.append(chunk)
+
+            for c in chunks:
+                text = "".join(w.word for w in c).strip()
+                text = " ".join(text.split())
+                text = text.replace("-->", "- >")
+                if not text or c[-1].end <= c[0].start:
+                    continue
+                idx += 1
+                f.write(f"{idx}\n{seconds_to_srt_time(c[0].start)} --> {seconds_to_srt_time(c[-1].end)}\n{text}\n\n")
 
     elapsed = time.time() - t0
     log.info(f"transcribed {info.duration:.1f}s of audio -> {idx} segments in {elapsed:.1f}s ({info.duration / elapsed:.1f}x realtime)")

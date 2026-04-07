@@ -4,26 +4,40 @@ import {
 	parseTranslateResponse,
 } from "./common.js";
 
-export async function translateBatchGemini(
-	texts: string[],
+export async function chatGemini(
+	systemMsg: string,
+	userMsg: string,
 	apiKey: string,
 	model: string,
-): Promise<string[]> {
+): Promise<string> {
 	const { GoogleGenerativeAI } = await import("@google/generative-ai");
 	const genAI = new GoogleGenerativeAI(apiKey);
 	const genModel = genAI.getGenerativeModel({ model });
 
 	const result = await genModel.generateContent({
-		systemInstruction: TRANSLATE_SYSTEM,
+		systemInstruction: systemMsg,
 		contents: [
 			{
 				role: "user",
-				parts: [{ text: buildTranslatePrompt(texts) }],
+				parts: [{ text: userMsg }],
 			},
 		],
 		generationConfig: { temperature: 0.3 },
 	});
 
-	const content = result.response.text();
+	return result.response.text();
+}
+
+export async function translateBatchGemini(
+	texts: string[],
+	apiKey: string,
+	model: string,
+): Promise<string[]> {
+	const content = await chatGemini(
+		TRANSLATE_SYSTEM,
+		buildTranslatePrompt(texts),
+		apiKey,
+		model,
+	);
 	return parseTranslateResponse(content, texts.length);
 }

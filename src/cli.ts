@@ -13,6 +13,7 @@ import {
 	type ApiProvider,
 	DEFAULT_API_MODELS,
 	checkOllamaGpu,
+	fixTranscriptionSrt,
 	translateSrt,
 } from "./translate/index.js";
 import { formatDuration, formatFileSize } from "./utils.js";
@@ -73,6 +74,17 @@ const main = defineCommand({
 			type: "string",
 			description: "API key (required for chatgpt/gemini/claude)",
 		},
+		"fix-transcription": {
+			type: "boolean",
+			default: false,
+			description:
+				"Use AI to fix misheard words in transcription before translating",
+		},
+		context: {
+			type: "string",
+			description:
+				'Additional context for AI (e.g. "youtuber plays minecraft hypixel bedwars")',
+		},
 		"batch-size": {
 			type: "string",
 			default: "20",
@@ -117,6 +129,8 @@ const main = defineCommand({
 		const ollamaUrl = args["ollama-url"];
 		const modelName = args.model;
 		const apiKey = args["api-key"];
+		const fixTranscription = args["fix-transcription"];
+		const context = args.context;
 		const batchSize = parseInt(args["batch-size"], 10);
 		const whisperModel = args["whisper-model"];
 		const enFontSize = parseInt(args["en-font-size"], 10);
@@ -223,6 +237,9 @@ const main = defineCommand({
 				await checkOllamaGpu(ollamaUrl, modelName);
 			}
 			transcribe(input, enSrt, whisperModel);
+			if (fixTranscription) {
+				await fixTranscriptionSrt(enSrt, translateCfg, context);
+			}
 			await translateSrt(enSrt, zhSrt, translateCfg);
 
 			const enRaw = fixOverlaps(

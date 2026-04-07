@@ -81,6 +81,8 @@ subtitle-burner <input> [options]
 | `--model <name>` | Model name — local ollama model or API model override (default: `qwen3:14b`) |
 | `--ollama-url <url>` | Ollama server URL (default: `http://ollama:11434`) |
 | `--batch-size <n>` | Translation batch size (default: 20) |
+| `--fix-transcription` | Use AI to fix misheard words in transcription before translating |
+| `--context <text>` | Additional context for AI (e.g. `"youtuber plays minecraft hypixel bedwars"`) |
 
 ### Transcription options
 
@@ -120,4 +122,8 @@ subtitle-burner <input> [options]
 
 # Custom output path and model
 ./run.sh ./lecture.mp4 -o ./output.mkv --model qwen3:8b
+
+# Fix misheard words with video context
+./run.sh ./gameplay.mp4 --translate-via chatgpt --api-key sk-... \
+  --fix-transcription --context "youtuber plays minecraft hypixel bedwars"
 ```

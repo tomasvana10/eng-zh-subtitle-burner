@@ -1,14 +1,15 @@
 import {
-	TRANSLATE_SYSTEM,
 	buildTranslatePrompt,
 	parseTranslateResponse,
+	TRANSLATE_SYSTEM,
 } from "./common.js";
 
-export async function translateBatchChatgpt(
-	texts: string[],
+export async function chatChatgpt(
+	systemMsg: string,
+	userMsg: string,
 	apiKey: string,
 	model: string,
-): Promise<string[]> {
+): Promise<string> {
 	const OpenAI = (await import("openai")).default;
 	const client = new OpenAI({ apiKey });
 
@@ -16,11 +17,24 @@ export async function translateBatchChatgpt(
 		model,
 		temperature: 0.3,
 		messages: [
-			{ role: "system", content: TRANSLATE_SYSTEM },
-			{ role: "user", content: buildTranslatePrompt(texts) },
+			{ role: "system", content: systemMsg },
+			{ role: "user", content: userMsg },
 		],
 	});
 
-	const content = res.choices[0]?.message?.content ?? "";
+	return res.choices[0]?.message?.content ?? "";
+}
+
+export async function translateBatchChatgpt(
+	texts: string[],
+	apiKey: string,
+	model: string,
+): Promise<string[]> {
+	const content = await chatChatgpt(
+		TRANSLATE_SYSTEM,
+		buildTranslatePrompt(texts),
+		apiKey,
+		model,
+	);
 	return parseTranslateResponse(content, texts.length);
 }

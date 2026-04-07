@@ -4,21 +4,20 @@ import {
 	parseTranslateResponse,
 } from "./common.js";
 
-export async function translateBatchLocal(
-	texts: string[],
+export async function chatLocal(
+	systemMsg: string,
+	userMsg: string,
 	ollamaUrl: string,
 	model: string,
-): Promise<string[]> {
-	const prompt = buildTranslatePrompt(texts);
-
+): Promise<string> {
 	const res = await fetch(`${ollamaUrl}/api/chat`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({
 			model,
 			messages: [
-				{ role: "system", content: TRANSLATE_SYSTEM },
-				{ role: "user", content: prompt },
+				{ role: "system", content: systemMsg },
+				{ role: "user", content: userMsg },
 			],
 			stream: false,
 			options: { temperature: 0.3, num_ctx: 4096 },
@@ -30,5 +29,19 @@ export async function translateBatchLocal(
 	}
 
 	const data = (await res.json()) as { message: { content: string } };
-	return parseTranslateResponse(data.message.content, texts.length);
+	return data.message.content;
+}
+
+export async function translateBatchLocal(
+	texts: string[],
+	ollamaUrl: string,
+	model: string,
+): Promise<string[]> {
+	const content = await chatLocal(
+		TRANSLATE_SYSTEM,
+		buildTranslatePrompt(texts),
+		ollamaUrl,
+		model,
+	);
+	return parseTranslateResponse(content, texts.length);
 }
