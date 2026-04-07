@@ -35,10 +35,11 @@ fi
 
 echo "running subtitle pipeline..."
 
-# Resolve the input file (first positional arg) so we can mount its directory
+# Resolve the input file (first positional arg) and mount its directory separately
 INPUT_HOST="$(realpath "$1")"
 INPUT_DIR="$(dirname "$INPUT_HOST")"
 INPUT_NAME="$(basename "$INPUT_HOST")"
 shift
 
-HOST_DIR="$INPUT_DIR" docker compose run --rm worker "/data/$INPUT_NAME" "$@"
+# /data = caller's cwd (for output), /input = input file's directory
+HOST_DIR="$CALLER_DIR" docker compose run -v "$INPUT_DIR:/input" --rm worker "/input/$INPUT_NAME" "$@"
