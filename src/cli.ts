@@ -52,8 +52,8 @@ const main = defineCommand({
 		},
 		preset: {
 			type: "string",
-			default: "medium",
-			description: "Encoder preset",
+			default: "p1",
+			description: "Encoder preset (nvenc: p1-p7, cpu: ultrafast-veryslow)",
 		},
 		"translate-via": {
 			type: "string",
@@ -251,7 +251,7 @@ const main = defineCommand({
 			const { en: enEntries, zh: zhEntries } = splitLongEntries(
 				enRaw,
 				zhRaw,
-				10,
+				16,
 			);
 			consola.info(
 				`subtitle entries: ${enEntries.length} EN, ${zhEntries.length} ZH (split from ${enRaw.length} segments)`,
