@@ -34,4 +34,11 @@ if [[ "$USE_API" != "true" ]]; then
 fi
 
 echo "running subtitle pipeline..."
-HOST_DIR="$CALLER_DIR" docker compose run --rm worker "$@"
+
+# Resolve the input file (first positional arg) so we can mount its directory
+INPUT_HOST="$(realpath "$1")"
+INPUT_DIR="$(dirname "$INPUT_HOST")"
+INPUT_NAME="$(basename "$INPUT_HOST")"
+shift
+
+HOST_DIR="$INPUT_DIR" docker compose run --rm worker "/data/$INPUT_NAME" "$@"
